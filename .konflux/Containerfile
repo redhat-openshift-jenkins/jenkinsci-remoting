@@ -1,0 +1,33 @@
+FROM registry.access.redhat.com/ubi9/openjdk-21:1.20-2.1721752936 as builder
+
+# Jenkins builds require git to be present for the build.
+USER root
+RUN microdnf install -y git
+
+USER 185
+
+# target contains the .jar files we want
+ENV MAVEN_S2I_ARTIFACT_DIRS="target" \
+    MAVEN_S2I_GOALS="clean install" \
+    S2I_SOURCE_DEPLOYMENTS_FILTER="*.jar"
+
+# Copying in source code. Red Hat OpenJDK S2I buiders expect source content in /tmp/src by default
+COPY --chown=185:0 . /tmp/src
+
+RUN /usr/local/s2i/assemble
+
+# Use slimmer runtime image for deploying Jenkins
+FROM registry.redhat.io/ubi9/openjdk-21-runtime:1.20-2.1721752928
+
+USER 185
+COPY --from=builder --chown=185:0 /deployments/remoting-*.jar /deployments/remoting.jar
+# JAVA_APP_JAR instructs the image run script to use the jar file as its main class.
+ENV JAVA_APP_JAR="remoting.jar"
+
+LABEL com.redhat.component="redhat-openshift-jenkins-remoting-container" \
+      description="Jenkins remoting runner container image." \
+      io.k8s.description="Jenkins remoting container image." \
+      io.k8s.display-name="Jenkins Remoting" \
+      io.openshift.tags="jenkins,jenkins2,ci,cicd" \
+      name="ocp-tools-4/openshift-jenkins-remoting-rhel9" \
+      summary="Jenkins Remoting for RHEL 9."
